@@ -2,11 +2,11 @@ import torch
 import numpy as np
 from scipy import stats
 from batchbald_redux import batchbald
+from heuristics import BatchBALD
 
 
 def predictions_from_pool(
-    model, X_pool: np.ndarray, T: int = 100, training: bool = True
-):
+    model, X_pool: np.ndarray, T: int = 100, training: bool = True):
     """Run random_subset prediction on model and return the output
 
     Attributes:
@@ -31,8 +31,7 @@ def predictions_from_pool(
 
 
 def uniform(
-    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True
-):
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
     """Baseline acquisition a(x) = unif() with unif() a function
     returning a draw from a uniform distribution over the interval [0,1].
     Using this acquisition function is equivalent to choosing a point
@@ -48,8 +47,7 @@ def uniform(
 
 
 def shannon_entropy_function(
-    model, X_pool: np.ndarray, T: int = 100, E_H: bool = False, training: bool = True
-):
+    model, X_pool: np.ndarray, T: int = 100, E_H: bool = False, training: bool = True):
     """H[y|x,D_train] := - sum_{c} p(y=c|x,D_train)log p(y=c|x,D_train)
 
     Attributes:
@@ -71,8 +69,7 @@ def shannon_entropy_function(
 
 
 def max_entropy(
-    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True
-):
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
     """Choose pool points that maximise the predictive entropy.
     Using Shannon entropy function.
 
@@ -92,8 +89,7 @@ def max_entropy(
 
 
 def bald(
-    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True
-):
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
     """Choose pool points that are expected to maximise the information
     gained about the model parameters, i.e. maximise the mutal information
     between predictions and model posterior. Given
@@ -119,10 +115,98 @@ def bald(
     query_idx = random_subset[idx]
     return query_idx, X_pool[query_idx]
 
+info_value = []
+
+def bald_info_value_infovae(
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
+    """Choose pool points that are expected to maximise the information
+    gained about the model parameters, i.e. maximise the mutal information
+    between predictions and model posterior. Given
+    I[y,w|x,D_train] = H[y|x,D_train] - E_{p(w|D_train)}[H[y|x,w]]
+    with w the model parameters (H[y|x,w] is the entropy of y given w).
+    Points that maximise this acquisition function are points on which the
+    model is uncertain on average but there exist model parameters that produce
+    disagreeing predictions with high certainty. This is equivalent to points
+    with high variance in th einput to the softmax layer
+
+    Attributes:
+        model: Model that is ready to measure uncertainty after training,
+        X_pool: Pool set to select uncertainty,
+        n_query: Number of points that maximise bald a(x) from pool set,
+        T: Number of MC dropout iterations aka training iterations,
+        training: If False, run test without MC dropout. (default=True)
+    """
+    H, E_H, random_subset = shannon_entropy_function(
+        model, X_pool, T, E_H=True, training=training
+    )
+    acquisition = H - E_H
+    idx = (-acquisition).argsort()[:n_query]
+    info_value.append(acquisition[idx])
+    np.save('info_value_dbal-InfoVAE.npy', info_value)
+    query_idx = random_subset[idx]
+    return query_idx, X_pool[query_idx]
+
+def bald_info_value_vanillavae(
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
+    """Choose pool points that are expected to maximise the information
+    gained about the model parameters, i.e. maximise the mutal information
+    between predictions and model posterior. Given
+    I[y,w|x,D_train] = H[y|x,D_train] - E_{p(w|D_train)}[H[y|x,w]]
+    with w the model parameters (H[y|x,w] is the entropy of y given w).
+    Points that maximise this acquisition function are points on which the
+    model is uncertain on average but there exist model parameters that produce
+    disagreeing predictions with high certainty. This is equivalent to points
+    with high variance in th einput to the softmax layer
+
+    Attributes:
+        model: Model that is ready to measure uncertainty after training,
+        X_pool: Pool set to select uncertainty,
+        n_query: Number of points that maximise bald a(x) from pool set,
+        T: Number of MC dropout iterations aka training iterations,
+        training: If False, run test without MC dropout. (default=True)
+    """
+    H, E_H, random_subset = shannon_entropy_function(
+        model, X_pool, T, E_H=True, training=training
+    )
+    acquisition = H - E_H
+    idx = (-acquisition).argsort()[:n_query]
+    info_value.append(acquisition[idx])
+    np.save('info_value_dbal-VanillaVae.npy', info_value)
+    query_idx = random_subset[idx]
+    return query_idx, X_pool[query_idx]
+
+def bald_info_value_bigan(
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
+    """Choose pool points that are expected to maximise the information
+    gained about the model parameters, i.e. maximise the mutal information
+    between predictions and model posterior. Given
+    I[y,w|x,D_train] = H[y|x,D_train] - E_{p(w|D_train)}[H[y|x,w]]
+    with w the model parameters (H[y|x,w] is the entropy of y given w).
+    Points that maximise this acquisition function are points on which the
+    model is uncertain on average but there exist model parameters that produce
+    disagreeing predictions with high certainty. This is equivalent to points
+    with high variance in th einput to the softmax layer
+
+    Attributes:
+        model: Model that is ready to measure uncertainty after training,
+        X_pool: Pool set to select uncertainty,
+        n_query: Number of points that maximise bald a(x) from pool set,
+        T: Number of MC dropout iterations aka training iterations,
+        training: If False, run test without MC dropout. (default=True)
+    """
+    H, E_H, random_subset = shannon_entropy_function(
+        model, X_pool, T, E_H=True, training=training
+    )
+    acquisition = H - E_H
+    idx = (-acquisition).argsort()[:n_query]
+    info_value.append(acquisition[idx])
+    np.save('info_value_dbal-BiGAN.npy', info_value)
+    query_idx = random_subset[idx]
+    return query_idx, X_pool[query_idx]
+
 
 def var_ratios(
-    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True
-):
+    model, X_pool: np.ndarray, n_query: int = 10, T: int = 100, training: bool = True):
     """Like Max Entropy but Variational Ratios measures lack of confidence.
     Given: variational_ratio[x] := 1 - max_{y} p(y|x,D_{train})
 
@@ -162,34 +246,28 @@ def mean_std(
     query_idx = random_subset[idx]
     return query_idx, X_pool[query_idx]
 
-def batch_bald(learner, X, n_instances=10, T=100):
-    random_subset = np.random.choice(range(len(X)), size=2000, replace=False)
-    X_random = X[random_subset]
+def batch_bald(learner, X, n_instances=10, T=100, training=True):
+    b_bald = BatchBALD(n_instances, 10)
     
-    batch_size = 128
-    #random_subset = np.random.choice(range(len(X)), size=2000, replace=False)
+    outputs, random_subset = predictions_from_pool(learner, X, T, False)
+    
+    batch_size = n_instances
     
     use_cuda = torch.cuda.is_available()
     device = "cuda" if use_cuda else "cpu"
         
     # Acquire pool predictions
-    N = len(X_random)
-    logits_N_K_C = torch.empty((N, T, 10), dtype=torch.double, pin_memory=use_cuda)
+    N = random_subset.shape[0]
+    logits_N_C_K = np.reshape(outputs, (N, 10, T))
 
     with torch.no_grad():
-        for i in range(0, N, batch_size):
-            lower = i
-            upper = min(i + batch_size, N)
-            outputs = np.stack([torch.softmax(learner.estimator.forward(X_random[lower:upper], training=True),dim=-1).cpu().numpy()
-                            for t in range(100)])
-            #pc = outputs.mean(axis=0)
-            outputs = outputs.reshape([upper-lower, 100, 10])
-            
-            logits_N_K_C[lower:upper].copy_(torch.from_numpy(outputs).double())
-
-    with torch.no_grad():
-        candidate_batch = batchbald.get_batchbald_batch(
-            logits_N_K_C, n_instances, 2000, dtype=torch.double, device=device
-        )
-    query_idx = random_subset[candidate_batch.indices]
+        acquisition = b_bald.compute_score(logits_N_C_K)
+    print(acquisition.shape)
+        #candidate_batch = batchbald.get_batchbald_batch(
+        #    logits_N_K_C.log().double(), n_instances, N, dtype=torch.double, device=device
+        #)
+    #query_idx = random_subset[candidate_batch.indices]
+    #return query_idx, X[query_idx]
+    idx = (-acquisition).argsort()[:n_instances]
+    query_idx = random_subset[idx]
     return query_idx, X[query_idx]
